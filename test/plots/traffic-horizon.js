@@ -21,7 +21,8 @@ export default async function() {
       type: "ordinal",
       scheme: "blues",
       tickFormat: (f => t => `≥${f(t)}`)(d3.format(",")),
-      legend: true
+      legend: true,
+      label: "Traffic (vehicles/hour)"
     },
     fy: {
       axis: null,

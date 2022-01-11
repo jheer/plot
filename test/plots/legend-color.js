@@ -8,6 +8,7 @@ export function colorLegendCategorical() {
 export function colorLegendCategoricalColumns() {
   return Plot.legend({
     color: {
+      label: "Industry",
       domain: [
         "Wholesale and Retail Trade",
         "Manufacturing",
@@ -21,7 +22,6 @@ export function colorLegendCategoricalColumns() {
         "Other"
       ]
     },
-    label: "Hello",
     columns: "180px"
   });
 }

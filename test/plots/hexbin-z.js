@@ -6,7 +6,8 @@ export default async function() {
   return Plot.plot({
     inset: 10,
     color: {
-      legend: true
+      legend: true,
+      label: null
     },
     marks: [
       Plot.hexgrid(),

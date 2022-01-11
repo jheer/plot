@@ -40,8 +40,8 @@ export function exposeLegends(scales, context, defaults = {}) {
   };
 }
 
-function legendOptions(context, {label, ticks, tickFormat} = {}, options) {
-  return inherit(options, context, {label, ticks, tickFormat});
+function legendOptions(context, {label, ticks, tickFormat} = {}, options = {}) {
+  return inherit(options, context, {label, ticks, tickFormat, ...options});
 }
 
 function legendColor(color, {
