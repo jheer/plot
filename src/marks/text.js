@@ -1,9 +1,10 @@
-import {create, namespaces} from "d3";
+import {namespaces} from "d3";
+import {create} from "../context.js";
 import {nonempty} from "../defined.js";
 import {formatDefault} from "../format.js";
-import {indexOf, identity, string, maybeNumberChannel, maybeTuple, numberChannel, isNumeric, isTemporal, keyword, maybeFrameAnchor, isTextual} from "../options.js";
+import {indexOf, identity, string, maybeNumberChannel, maybeTuple, numberChannel, isNumeric, isTemporal, keyword, maybeFrameAnchor, isTextual, isIterable} from "../options.js";
 import {Mark} from "../plot.js";
-import {applyChannelStyles, applyDirectStyles, applyIndirectStyles, applyAttr, applyTransform, offset, impliedString, applyFrameAnchor} from "../style.js";
+import {applyChannelStyles, applyDirectStyles, applyIndirectStyles, applyAttr, applyTransform, impliedString, applyFrameAnchor} from "../style.js";
 import {maybeIntervalMidX, maybeIntervalMidY} from "../transforms/interval.js";
 
 const defaults = {
@@ -18,7 +19,7 @@ export class Text extends Mark {
     const {
       x,
       y,
-      text = data != null && isTextual(data) ? identity : indexOf,
+      text = isIterable(data) && isTextual(data) ? identity : indexOf,
       frameAnchor,
       textAnchor = /right$/i.test(frameAnchor) ? "end" : /left$/i.test(frameAnchor) ? "start" : "middle",
       lineAnchor = /^top/i.test(frameAnchor) ? "top" : /^bottom/i.test(frameAnchor) ? "bottom" : "middle",
@@ -59,14 +60,14 @@ export class Text extends Mark {
     this.fontWeight = string(fontWeight);
     this.frameAnchor = maybeFrameAnchor(frameAnchor);
   }
-  render(index, {x, y}, channels, dimensions) {
+  render(index, scales, channels, dimensions, context) {
     const {x: X, y: Y, rotate: R, text: T, fontSize: FS} = channels;
-    const {dx, dy, rotate} = this;
+    const {rotate} = this;
     const [cx, cy] = applyFrameAnchor(this, dimensions);
-    return create("svg:g")
-        .call(applyIndirectStyles, this, dimensions)
+    return create("svg:g", context)
+        .call(applyIndirectStyles, this, scales, dimensions)
         .call(applyIndirectTextStyles, this, T, dimensions)
-        .call(applyTransform, x, y, offset + dx, offset + dy)
+        .call(applyTransform, this, scales)
         .call(g => g.selectAll()
           .data(index)
           .enter()
@@ -104,7 +105,7 @@ function applyMultilineText(selection, {monospace, lineAnchor, lineHeight, lineW
     if (n > 1) {
       for (let i = 0; i < n; ++i) {
         if (!lines[i]) continue;
-        const tspan = document.createElementNS(namespaces.svg, "tspan");
+        const tspan = this.ownerDocument.createElementNS(namespaces.svg, "tspan");
         tspan.setAttribute("x", 0);
         tspan.setAttribute("y", `${(y + i) * lineHeight}em`);
         tspan.textContent = lines[i];

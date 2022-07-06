@@ -1,7 +1,9 @@
-import {create, path} from "d3";
+import {path} from "d3";
 import {inferFontVariant} from "../axes.js";
 import {maybeAutoTickFormat} from "../axis.js";
+import {Context, create} from "../context.js";
 import {isNoneish, maybeColorChannel, maybeNumberChannel} from "../options.js";
+import {isOrdinalScale, isThresholdScale} from "../scales.js";
 import {applyInlineStyles, impliedString, maybeClassName} from "../style.js";
 
 function maybeScale(scale, key) {
@@ -12,16 +14,19 @@ function maybeScale(scale, key) {
 }
 
 export function legendSwatches(color, options) {
+  if (!isOrdinalScale(color) && !isThresholdScale(color)) throw new Error(`swatches legend requires ordinal or threshold color scale (not ${color.type})`);
   return legendItems(
     color,
     options,
-    selection => selection.style("--color", color.scale),
-    className => `.${className}-swatch::before {
-        content: "";
+    (selection, scale) => selection.append("svg")
+        .attr("fill", scale.scale)
+      .append("rect")
+        .attr("width", "100%")
+        .attr("height", "100%"),
+    className => `.${className}-swatch svg {
         width: var(--swatchWidth);
         height: var(--swatchHeight);
         margin-right: 0.5em;
-        background: var(--color);
       }`
   );
 }
@@ -70,23 +75,25 @@ export function legendSymbols(symbol, {
   );
 }
 
-function legendItems(scale, {
-  columns,
-  tickFormat,
-  fontVariant = inferFontVariant(scale),
-  // TODO label,
-  swatchSize = 15,
-  swatchWidth = swatchSize,
-  swatchHeight = swatchSize,
-  marginLeft = 0,
-  className,
-  style,
-  width
-} = {}, swatch, swatchStyle) {
+function legendItems(scale, options = {}, swatch, swatchStyle) {
+  let {
+    columns,
+    tickFormat,
+    fontVariant = inferFontVariant(scale),
+    // TODO label,
+    swatchSize = 15,
+    swatchWidth = swatchSize,
+    swatchHeight = swatchSize,
+    marginLeft = 0,
+    className,
+    style,
+    width
+  } = options;
+  const context = Context(options);
   className = maybeClassName(className);
   tickFormat = maybeAutoTickFormat(tickFormat, scale.domain);
 
-  const swatches = create("div")
+  const swatches = create("div", context)
       .attr("class", className)
       .attr("style", `
         --swatchWidth: ${+swatchWidth}px;
@@ -148,7 +155,7 @@ function legendItems(scale, {
         .attr("class", `${className}-swatch`)
         .call(swatch, scale)
         .append(function() {
-          return document.createTextNode(tickFormat.apply(this, arguments));
+          return this.ownerDocument.createTextNode(tickFormat.apply(this, arguments));
         });
   }
 

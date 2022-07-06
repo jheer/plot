@@ -1,7 +1,7 @@
-import {create} from "d3";
-import {Mark} from "../plot.js";
+import {create} from "../context.js";
 import {number} from "../options.js";
-import {applyDirectStyles, applyIndirectStyles, applyTransform, offset} from "../style.js";
+import {Mark} from "../plot.js";
+import {applyDirectStyles, applyIndirectStyles, applyTransform} from "../style.js";
 
 const defaults = {
   ariaLabel: "frame",
@@ -16,26 +16,32 @@ export class Frame extends Mark {
       insetTop = inset,
       insetRight = inset,
       insetBottom = inset,
-      insetLeft = inset
+      insetLeft = inset,
+      rx,
+      ry
     } = options;
     super(undefined, undefined, options, defaults);
     this.insetTop = number(insetTop);
     this.insetRight = number(insetRight);
     this.insetBottom = number(insetBottom);
     this.insetLeft = number(insetLeft);
+    this.rx = number(rx);
+    this.ry = number(ry);
   }
-  render(I, scales, channels, dimensions) {
+  render(index, scales, channels, dimensions, context) {
     const {marginTop, marginRight, marginBottom, marginLeft, width, height} = dimensions;
-    const {insetTop, insetRight, insetBottom, insetLeft, dx, dy} = this;
-    return create("svg:rect")
-        .call(applyIndirectStyles, this, dimensions)
+    const {insetTop, insetRight, insetBottom, insetLeft, rx, ry} = this;
+    return create("svg:rect", context)
+        .call(applyIndirectStyles, this, scales, dimensions)
         .call(applyDirectStyles, this)
-        .call(applyTransform, null, null, offset + dx, offset + dy)
+        .call(applyTransform, this, {})
         .attr("x", marginLeft + insetLeft)
         .attr("y", marginTop + insetTop)
         .attr("width", width - marginLeft - marginRight - insetLeft - insetRight)
         .attr("height", height - marginTop - marginBottom - insetTop - insetBottom)
-      .node();
+        .attr("rx", rx)
+        .attr("ry", ry)
+  .node();
   }
 }
 

@@ -1,14 +1,16 @@
-import {create, cross, difference, groups, InternMap, select} from "d3";
+import {cross, difference, groups, InternMap, select} from "d3";
 import {Axes, autoAxisTicks, autoScaleLabels} from "./axes.js";
-import {Channel, channelObject, channelDomain, channelSort, valueObject} from "./channel.js";
+import {Channel, channelObject, channelDomain, valueObject} from "./channel.js";
+import {Context, create} from "./context.js";
 import {defined} from "./defined.js";
 import {Dimensions} from "./dimensions.js";
 import {Legends, exposeLegends} from "./legends.js";
-import {arrayify, isOptions, isScaleOptions, keyword, map, range, second, where, yes} from "./options.js";
+import {arrayify, isDomainSort, isScaleOptions, keyword, map, range, second, where, yes} from "./options.js";
 import {Scales, ScaleFunctions, autoScaleRange, exposeScales} from "./scales.js";
-import {registry as scaleRegistry} from "./scales/index.js";
+import {position, registry as scaleRegistry} from "./scales/index.js";
 import {applyInlineStyles, maybeClassName, maybeClip, styles} from "./style.js";
-import {basic} from "./transforms/basic.js";
+import {basic, initializer} from "./transforms/basic.js";
+import {maybeInterval} from "./transforms/interval.js";
 import {consumeWarnings} from "./warnings.js";
 
 export function plot(options = {}) {
@@ -50,6 +52,7 @@ export function plot(options = {}) {
     const {x, y} = facet;
     if (x != null || y != null) {
       const facetData = arrayify(facet.data);
+      if (facetData == null) throw new Error("missing facet data");
       facetChannels = {};
       if (x != null) {
         const fx = Channel(facetData, {value: x, scale: "fx"});
@@ -85,9 +88,9 @@ export function plot(options = {}) {
   const scales = ScaleFunctions(scaleDescriptors);
   const axes = Axes(scaleDescriptors, options);
   const dimensions = Dimensions(scaleDescriptors, axes, options);
+  const context = Context(options);
 
   autoScaleRange(scaleDescriptors, dimensions);
-  autoScaleLabels(channelsByScale, scaleDescriptors, axes, dimensions, options);
   autoAxisTicks(scaleDescriptors, axes);
 
   const {fx, fy} = scales;
@@ -112,11 +115,14 @@ export function plot(options = {}) {
 
   // Reconstruct scales if new scaled channels were created during reinitialization.
   if (newByScale.size) {
+    for (const key of newByScale) if (scaleRegistry.get(key) === position) throw new Error(`initializers cannot declare position scales: ${key}`);
     const newScaleDescriptors = Scales(addScaleChannels(new Map(), stateByMark, key => newByScale.has(key)), options);
     const newScales = ScaleFunctions(newScaleDescriptors);
     Object.assign(scaleDescriptors, newScaleDescriptors);
     Object.assign(scales, newScales);
   }
+
+  autoScaleLabels(channelsByScale, scaleDescriptors, axes, dimensions, options);
 
   // Compute value objects, applying scales as needed.
   for (const state of stateByMark.values()) {
@@ -125,7 +131,7 @@ export function plot(options = {}) {
 
   const {width, height} = dimensions;
 
-  const svg = create("svg")
+  const svg = create("svg", context)
       .attr("class", className)
       .attr("fill", "currentColor")
       .attr("font-family", "system-ui, sans-serif")
@@ -155,8 +161,8 @@ export function plot(options = {}) {
   // When faceting, render axes for fx and fy instead of x and y.
   const axisY = axes[facets !== undefined && fy ? "fy" : "y"];
   const axisX = axes[facets !== undefined && fx ? "fx" : "x"];
-  if (axisY) svg.appendChild(axisY.render(null, scales, dimensions));
-  if (axisX) svg.appendChild(axisX.render(null, scales, dimensions));
+  if (axisY) svg.appendChild(axisY.render(null, scales, dimensions, context));
+  if (axisX) svg.appendChild(axisX.render(null, scales, dimensions, context));
 
   // Render (possibly faceted) marks.
   if (facets !== undefined) {
@@ -174,7 +180,8 @@ export function plot(options = {}) {
         .append((ky, i) => (i === j ? axis1 : axis2).render(
           fx && where(fxDomain, kx => indexByFacet.has([kx, ky])),
           scales,
-          {...dimensions, ...fyMargins, offsetTop: fy(ky)}
+          {...dimensions, ...fyMargins, offsetTop: fy(ky)},
+          context
         ));
     }
     if (fx && axes.x) {
@@ -187,7 +194,8 @@ export function plot(options = {}) {
         .append((kx, i) => (i === j ? axis1 : axis2).render(
           fy && where(fyDomain, ky => indexByFacet.has([kx, ky])),
           scales,
-          {...dimensions, ...fxMargins, labelMarginLeft: marginLeft, labelMarginRight: marginRight, offsetLeft: fx(kx)}
+          {...dimensions, ...fxMargins, labelMarginLeft: marginLeft, labelMarginRight: marginRight, offsetLeft: fx(kx)},
+          context
         ));
     }
     selection.selectAll()
@@ -200,34 +208,36 @@ export function plot(options = {}) {
           const j = indexByFacet.get(key);
           for (const [mark, {channels, values, facets}] of stateByMark) {
             const facet = facets ? mark.filter(facets[j] ?? facets[0], channels, values) : null;
-            const node = mark.render(facet, scales, values, subdimensions);
+            const node = mark.render(facet, scales, values, subdimensions, context);
             if (node != null) this.appendChild(node);
           }
         });
   } else {
     for (const [mark, {channels, values, facets}] of stateByMark) {
       const facet = facets ? mark.filter(facets[0], channels, values) : null;
-      const node = mark.render(facet, scales, values, dimensions);
+      const node = mark.render(facet, scales, values, dimensions, context);
       if (node != null) svg.appendChild(node);
     }
   }
 
   // Wrap the plot in a figure with a caption, if desired.
   let figure = svg;
-  const legends = Legends(scaleDescriptors, options);
+  const legends = Legends(scaleDescriptors, context, options);
   if (caption != null || legends.length > 0) {
+    const {document} = context;
     figure = document.createElement("figure");
     figure.style.maxWidth = "initial";
-    figure.append(...legends, svg);
+    for (const legend of legends) figure.appendChild(legend);
+    figure.appendChild(svg);
     if (caption != null) {
       const figcaption = document.createElement("figcaption");
-      figcaption.append(caption);
-      figure.append(figcaption);
+      figcaption.appendChild(caption instanceof Node ? caption : document.createTextNode(caption));
+      figure.appendChild(figcaption);
     }
   }
 
   figure.scale = exposeScales(scaleDescriptors);
-  figure.legend = exposeLegends(scaleDescriptors, options);
+  figure.legend = exposeLegends(scaleDescriptors, context, options);
 
   const w = consumeWarnings();
   if (w > 0) {
@@ -247,15 +257,15 @@ export function plot(options = {}) {
 
 export class Mark {
   constructor(data, channels = [], options = {}, defaults) {
-    const {facet = "auto", sort, dx, dy, clip, initializer} = options;
+    const {facet = "auto", sort, dx, dy, clip, channels: extraChannels} = options;
     const names = new Set();
     this.data = data;
-    this.sort = isOptions(sort) ? sort : null;
-    this.initializer = this.sort?.channel == null ? initializer : channelSort(initializer, this.sort);
+    this.sort = isDomainSort(sort) ? sort : null;
+    this.initializer = initializer(options).initializer;
+    this.transform = this.initializer ? options.transform : basic(options).transform;
     this.facet = facet == null || facet === false ? null : keyword(facet === true ? "include" : facet, "facet", ["auto", "include", "exclude"]);
-    const {transform} = basic(options);
-    this.transform = transform;
-    if (defaults !== undefined) channels = styles(this, options, channels, defaults);
+    if (extraChannels !== undefined) channels = [...channels, ...extraChannels.filter(e => !channels.some(c => c.name === e.name))];
+    if (defaults !== undefined) channels = [...channels, ...styles(this, options, defaults)];
     this.channels = channels.filter(channel => {
       const {name, value, optional} = channel;
       if (value == null) {
@@ -302,7 +312,7 @@ export function marks(...marks) {
 }
 
 function markify(mark) {
-  return mark instanceof Mark ? mark : new Render(mark);
+  return typeof mark?.render === "function" ? mark : new Render(mark);
 }
 
 class Render extends Mark {
@@ -321,7 +331,11 @@ function applyScaleTransforms(channels, options) {
     const channel = channels[name];
     const {scale} = channel;
     if (scale != null) {
-      const {percent, transform = percent ? x => x * 100 : undefined} = options[scale] || {};
+      const {
+        percent,
+        interval,
+        transform = percent ? x => x * 100 : maybeInterval(interval)?.floor
+      } = options[scale] || {};
       if (transform != null) channel.value = map(channel.value, transform);
     }
   }
@@ -339,8 +353,7 @@ function inferChannelScale(channels) {
       switch (name) {
         case "fill": case "stroke": scale = "color"; break;
         case "fillOpacity": case "strokeOpacity": case "opacity": scale = "opacity"; break;
-        case "r": case "length": case "symbol": scale = name; break;
-        default: scale = null;
+        default: scale = scaleRegistry.has(name) ? name : null; break;
       }
       channel.scale = scale;
     }

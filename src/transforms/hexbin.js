@@ -1,8 +1,8 @@
 import {coerceNumbers} from "../scales.js";
 import {sqrt3} from "../symbols.js";
 import {identity, isNoneish, number, valueof} from "../options.js";
+import {initializer} from "./basic.js";
 import {hasOutput, maybeGroup, maybeOutputs, maybeSubgroup} from "./group.js";
-import {initializer} from "./initializer.js";
 
 // We don’t want the hexagons to align with the edges of the plot frame, as that
 // would cause extreme x-values (the upper bound of the default x-scale domain)
@@ -35,8 +35,8 @@ export function hexbin(outputs = {fill: "count"}, inputs = {}) {
 
     // Coerce the X and Y channels to numbers (so that null is properly treated
     // as an undefined value rather than being coerced to zero).
-    X = coerceNumbers(valueof(X.value, X.scale !== undefined ? scales[X.scale] : identity));
-    Y = coerceNumbers(valueof(Y.value, Y.scale !== undefined ? scales[Y.scale] : identity));
+    X = coerceNumbers(valueof(X.value, scales[X.scale] || identity));
+    Y = coerceNumbers(valueof(Y.value, scales[Y.scale] || identity));
 
     // Extract the values for channels that are eligible for grouping; not all
     // marks define a z channel, so compute one if it not already computed. If z

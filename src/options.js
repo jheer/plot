@@ -114,6 +114,12 @@ export function isOptions(option) {
   return isObject(option) && typeof option.transform !== "function";
 }
 
+// Disambiguates a sort transform (e.g., {sort: "date"}) from a channel domain
+// sort definition (e.g., {sort: {y: "x"}}).
+export function isDomainSort(sort) {
+  return isOptions(sort) && sort.value === undefined && sort.channel === undefined;
+}
+
 // For marks specified either as [0, x] or [x1, x2], such as areas and bars.
 export function maybeZero(x, x1, x2, x3 = identity) {
   if (x1 === undefined && x2 === undefined) { // {x} or {}
@@ -228,6 +234,10 @@ export function numberChannel(source) {
   };
 }
 
+export function isIterable(value) {
+  return value && typeof value[Symbol.iterator] === "function";
+}
+
 export function isTextual(values) {
   for (const value of values) {
     if (value == null) continue;
@@ -335,4 +345,20 @@ export function order(values) {
   const first = values[0];
   const last = values[values.length - 1];
   return descending(first, last);
+}
+
+// Unlike {...defaults, ...options}, this ensures that any undefined (but
+// present) properties in options inherit the given default value.
+export function inherit(options = {}, ...rest) {
+  let o = options;
+  for (const defaults of rest) {
+    for (const key in defaults) {
+      if (o[key] === undefined) {
+        const value = defaults[key];
+        if (o === options) o = {...o, [key]: value};
+        else o[key] = value;
+      }
+    }
+  }
+  return o;
 }

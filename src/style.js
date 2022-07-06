@@ -30,9 +30,9 @@ export function styles(
     opacity,
     mixBlendMode,
     paintOrder,
+    pointerEvents,
     shapeRendering
   },
-  channels,
   {
     ariaLabel: cariaLabel,
     fill: defaultFill = "currentColor",
@@ -122,10 +122,10 @@ export function styles(
   mark.opacity = impliedNumber(copacity, 1);
   mark.mixBlendMode = impliedString(mixBlendMode, "normal");
   mark.paintOrder = impliedString(paintOrder, "normal");
+  mark.pointerEvents = impliedString(pointerEvents, "auto");
   mark.shapeRendering = impliedString(shapeRendering, "auto");
 
   return [
-    ...channels,
     {name: "title", value: title, optional: true},
     {name: "href", value: href, optional: true},
     {name: "ariaLabel", value: variaLabel, optional: true},
@@ -184,7 +184,7 @@ function groupAesthetics({ariaLabel: AL, title: T, fill: F, fillOpacity: FO, str
   return [AL, T, F, FO, S, SO, SW, O, H].filter(c => c !== undefined);
 }
 
-function groupZ(I, Z, z) {
+export function groupZ(I, Z, z) {
   const G = group(I, i => Z[i]);
   if (z === undefined && G.size > I.length >> 1) {
     warn(`Warning: the implicit z channel has high cardinality. This may occur when the fill or stroke channel is associated with quantitative data rather than ordinal or categorical data. You can suppress this warning by setting the z option explicitly; if this data represents a single series, set z to null.`);
@@ -247,7 +247,7 @@ export function maybeClip(clip) {
   throw new Error(`invalid clip method: ${clip}`);
 }
 
-export function applyIndirectStyles(selection, mark, {width, height, marginLeft, marginRight, marginTop, marginBottom}) {
+export function applyIndirectStyles(selection, mark, scales, dimensions) {
   applyAttr(selection, "aria-label", mark.ariaLabel);
   applyAttr(selection, "aria-description", mark.ariaDescription);
   applyAttr(selection, "aria-hidden", mark.ariaHidden);
@@ -263,15 +263,18 @@ export function applyIndirectStyles(selection, mark, {width, height, marginLeft,
   applyAttr(selection, "stroke-dashoffset", mark.strokeDashoffset);
   applyAttr(selection, "shape-rendering", mark.shapeRendering);
   applyAttr(selection, "paint-order", mark.paintOrder);
+  applyAttr(selection, "pointer-events", mark.pointerEvents);
   if (mark.clip === "frame") {
+    const {x, y} = scales;
+    const {width, height, marginLeft, marginRight, marginTop, marginBottom} = dimensions;
     const id = `plot-clip-${++nextClipId}`;
     selection
         .attr("clip-path", `url(#${id})`)
       .append("clipPath")
         .attr("id", id)
       .append("rect")
-        .attr("x", marginLeft)
-        .attr("y", marginTop)
+        .attr("x", marginLeft - (x?.bandwidth ? x.bandwidth() / 2 : 0))
+        .attr("y", marginTop - (y?.bandwidth ? y.bandwidth() / 2 : 0))
         .attr("width", width - marginRight - marginLeft)
         .attr("height", height - marginTop - marginBottom);
   }
@@ -286,7 +289,8 @@ function applyHref(selection, href, target) {
   selection.each(function(i) {
     const h = href(i);
     if (h != null) {
-      const a = document.createElementNS(namespaces.svg, "a");
+      const a = this.ownerDocument.createElementNS(namespaces.svg, "a");
+      a.setAttribute("fill", "inherit");
       a.setAttributeNS(namespaces.xlink, "href", h);
       if (target != null) a.setAttribute("target", target);
       this.parentNode.insertBefore(a, this).appendChild(this);
@@ -302,9 +306,11 @@ export function applyStyle(selection, name, value) {
   if (value != null) selection.style(name, value);
 }
 
-export function applyTransform(selection, x, y, tx, ty) {
-  if (x && x.bandwidth) tx += x.bandwidth() / 2;
-  if (y && y.bandwidth) ty += y.bandwidth() / 2;
+export function applyTransform(selection, mark, {x, y}, tx = offset, ty = offset) {
+  tx += mark.dx;
+  ty += mark.dy;
+  if (x?.bandwidth) tx += x.bandwidth() / 2;
+  if (y?.bandwidth) ty += y.bandwidth() / 2;
   if (tx || ty) selection.attr("transform", `translate(${tx},${ty})`);
 }
 
